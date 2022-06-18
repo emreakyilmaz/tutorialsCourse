@@ -1,4 +1,23 @@
-from Gridworld import Gridworld
+from Gridworld import Grid
+
+ACTION_SPACE = ('U','L','D','R')
+
+def standard_grid():
+  g = Grid(3, 4, (2, 0))
+  rewards = {(0, 3): 1, (1, 3): -1}
+  actions = {
+    (0, 0): ('D', 'R'),
+    (0, 1): ('L', 'R'),
+    (0, 2): ('L', 'D', 'R'),
+    (1, 0): ('U', 'D'),
+    (1, 2): ('U', 'D', 'R'),
+    (2, 0): ('U', 'R'),
+    (2, 1): ('L', 'R'),
+    (2, 2): ('L', 'R', 'U'),
+    (2, 3): ('L', 'U'),
+  }
+  g.set(rewards, actions)
+  return g
 
 def print_values(V, g):
   for i in range(g.rows):
@@ -23,17 +42,17 @@ if  __name__ == '__main__':
     transition_probs = {}
     rewards = {}
 
-    grid = Gridworld()
+    grid = standard_grid()
     for i in range(grid.rows):
         for j in range(grid.cols):
-            s = (i,j)
-            if not grid.game_over():
-                for a in grid.actions:
+            s = (i, j)
+            if not grid.is_terminal(s):
+                for a in ACTION_SPACE:
                     s2 = grid.get_next_state(s, a)
-                    transition_probs[(s,a,s2)] = 1
+                    transition_probs[(s, a, s2)] = 1
                     if s2 in grid.rewards:
-                        rewards[s,a,s2] = grid.rewards[s2]
-
+                        rewards[(s, a, s2)] = grid.rewards[s2]
+    print(rewards)
     ### fixed policy ###
     policy = {
         (2, 0): 'U',
@@ -48,3 +67,44 @@ if  __name__ == '__main__':
     }
 
     print_policy(policy, grid)
+
+    SMALL_ENOUGH = 1e-3
+    gamma = 0.9
+
+    V = {}
+    states = grid.all_states()
+    for s in states:
+        V[s] = 0
+
+    # repeat until convergence
+    # V[s] = max[a]{ sum[s',r] { p(s',r|s,a)[r + gamma*V[s']] } }
+    it = 0
+    while True:
+        biggest_change = 0
+
+        for s in grid.all_states():
+            if not grid.is_terminal(s):
+                old_v = V[s]
+                new_v = 0  # we will accumulate the answer
+                for a in ACTION_SPACE:
+                    for s2 in grid.all_states():
+                        # action probability is deterministic
+                        action_prob = 1 if policy.get(s) == a else 0
+
+                        # reward is a function of (s, a, s'), 0 if not specified
+                        r = rewards.get((s, a, s2), 0)
+                        new_v += action_prob * transition_probs.get((s, a, s2), 0) * (r + gamma * V[s2])
+
+                    # after done getting the new value, update the value table
+                V[s] = new_v
+                if old_v - V[s] < 0:
+                    biggest_change = max(biggest_change, -1*(old_v - V[s]))
+                else:
+                    biggest_change = max(biggest_change, (old_v - V[s]))
+
+        print("iter:", it, "biggest_change:", biggest_change)
+        print_values(V, grid)
+        it += 1
+
+        if biggest_change < SMALL_ENOUGH:
+            break
